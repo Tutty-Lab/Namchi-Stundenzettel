@@ -8,6 +8,7 @@ import type { Employee, EmploymentType, Schedule, Shift } from "../types";
 import { generateSchedule } from "../lib/scheduler";
 import { validateSchedule, type ValidationResult } from "../lib/validation";
 import { clearState, loadState, saveState, type PersistedState } from "../lib/storage";
+import { MIN_PASSWORD_LENGTH, hashPassword, passwordMatches } from "../lib/auth";
 import { isRemoteConfigured, loadRemote, saveRemote, type RemoteStatus } from "../lib/remote";
 import { createManualShift, updateShiftTimes } from "../lib/shiftOps";
 import {
@@ -65,6 +66,9 @@ export function useSchedule() {
     const persisted = loadState();
     return normalizeSchedule(persisted?.schedule);
   });
+  const [passwordHash, setPasswordHash] = useState<string | undefined>(
+    () => loadState()?.passwordHash,
+  );
   const [originalShifts, setOriginalShifts] = useState<Shift[]>(() => {
     const persisted = loadState();
     return persisted?.originalShifts ?? [];
@@ -76,14 +80,14 @@ export function useSchedule() {
 
   // Immer sofort lokal sichern – das ist der Offline-Puffer.
   useEffect(() => {
-    saveState({ schedule, originalShifts });
-  }, [schedule, originalShifts]);
+    saveState({ schedule, originalShifts, passwordHash });
+  }, [schedule, originalShifts, passwordHash]);
 
   // Letzter Stand für Zugriffe außerhalb des Renders (siehe Erst-Upload).
-  const latest = useRef<PersistedState>({ schedule, originalShifts });
+  const latest = useRef<PersistedState>({ schedule, originalShifts, passwordHash });
   useEffect(() => {
-    latest.current = { schedule, originalShifts };
-  }, [schedule, originalShifts]);
+    latest.current = { schedule, originalShifts, passwordHash };
+  }, [schedule, originalShifts, passwordHash]);
 
   // Beim Start den Stand der Filiale aus der gemeinsamen Datenbank holen.
   // Vorher darf nicht hochgeladen werden, sonst überschreibt der lokale
@@ -99,6 +103,7 @@ export function useSchedule() {
         if (remote?.schedule) {
           setSchedule(normalizeSchedule(remote.schedule));
           setOriginalShifts(remote.originalShifts ?? []);
+          setPasswordHash(remote.passwordHash);
         } else {
           // Noch keine Zeile für diese Filiale: lokalen Stand hochladen.
           await saveRemote(latest.current);
@@ -120,12 +125,12 @@ export function useSchedule() {
     if (!isRemoteConfigured || !hydrated.current) return;
     const timer = window.setTimeout(() => {
       setRemoteStatus("saving");
-      saveRemote({ schedule, originalShifts })
+      saveRemote({ schedule, originalShifts, passwordHash })
         .then(() => setRemoteStatus("idle"))
         .catch(() => setRemoteStatus("error"));
     }, 1000);
     return () => window.clearTimeout(timer);
-  }, [schedule, originalShifts]);
+  }, [schedule, originalShifts, passwordHash]);
 
   const validation: ValidationResult = useMemo(
     () => validateSchedule(schedule.employees, schedule.shifts),
@@ -202,8 +207,8 @@ export function useSchedule() {
   }, []);
 
   const saveNow = useCallback(() => {
-    saveState({ schedule, originalShifts });
-  }, [schedule, originalShifts]);
+    saveState({ schedule, originalShifts, passwordHash });
+  }, [schedule, originalShifts, passwordHash]);
 
   // ----- Ausnahmen je Datum -----
   const upsertOverride = useCallback((override: DateOverride) => {
@@ -282,6 +287,38 @@ export function useSchedule() {
     });
   }, []);
 
+  /**
+   * Passwort der Filiale ändern. Gibt eine Meldung zurück oder null bei Erfolg.
+   *
+   * Das alte Passwort wird abgefragt, damit nicht jeder, der gerade vor dem
+   * offenen Tablet steht, die Filiale aussperren kann. Geschrieben wird sofort
+   * – wer nach dem Ändern gleich neu lädt, säße sonst vor dem alten Passwort.
+   */
+  const changePassword = useCallback(
+    async (alt: string, neu: string): Promise<string | null> => {
+      if (!(await passwordMatches(alt, latest.current.passwordHash))) {
+        return "Mật khẩu hiện tại không đúng.";
+      }
+      const sauber = neu.trim();
+      if (sauber.length < MIN_PASSWORD_LENGTH) {
+        return `Mật khẩu mới phải có ít nhất ${MIN_PASSWORD_LENGTH} ký tự.`;
+      }
+      const neuerHash = await hashPassword(sauber);
+      setPasswordHash(neuerHash);
+      const naechster = { ...latest.current, passwordHash: neuerHash };
+      saveState(naechster);
+      if (isRemoteConfigured) {
+        try {
+          await saveRemote(naechster);
+        } catch {
+          setRemoteStatus("error");
+        }
+      }
+      return null;
+    },
+    [],
+  );
+
   return {
     schedule,
     originalShifts,
@@ -292,6 +329,8 @@ export function useSchedule() {
     addEmployee,
     updateEmployee,
     removeEmployee,
+    changePassword,
+    hasOwnPassword: passwordHash !== undefined,
     generate,
     resetToOriginal,
     resetAll,
