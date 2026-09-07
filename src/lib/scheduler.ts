@@ -27,6 +27,7 @@ import {
 } from "./demand";
 import { getShiftTemplate, type TemplateType } from "./shifts";
 import { consecutiveRunLengthWith, seededRandom } from "./consecutive";
+import { mayWorkOn, weekStartOf } from "./availability";
 import { presenceFromPaid } from "./time";
 import {
   effectiveWeekdayKey,
@@ -276,6 +277,24 @@ function applyShift(state: SchedulerState, shift: Shift): void {
  * Platziert genau eine Schicht für einen Mitarbeiter: bestes Datum wählen,
  * Schichtlänge an das Tagesfenster anpassen. Gibt true zurück, wenn platziert.
  */
+/** Hat die Person diese Woche noch einen freien Arbeitstag (maxDaysPerWeek)? */
+function weekDayRoomLeft(
+  state: SchedulerState,
+  employee: Employee,
+  isoDate: string,
+  statt?: string,
+): boolean {
+  const grenze = employee.maxDaysPerWeek;
+  if (!grenze) return true;
+  const woche = weekStartOf(isoDate);
+  let n = 0;
+  for (const d of state.worked.get(employee.id) ?? []) {
+    if (d === statt) continue;
+    if (weekStartOf(d) === woche) n++;
+  }
+  return n < grenze;
+}
+
 function placeOneShift(state: SchedulerState, employee: Employee): boolean {
   const remaining = state.remaining.get(employee.id)!;
   if (remaining <= 0) return false;
@@ -287,12 +306,22 @@ function placeOneShift(state: SchedulerState, employee: Employee): boolean {
   // sich das nötige Tempo (Stunden je verbleibendem Tag) – ohne das würde die
   // zufällige Längenwahl das Monats-Soll reißen.
   let daysLeft = 0;
+  const wochenTage = new Map<string, number>();
+  if (employee.maxDaysPerWeek) {
+    for (const d of worked) wochenTage.set(weekStartOf(d), (wochenTage.get(weekStartOf(d)) ?? 0) + 1);
+  }
   for (const isoDate of state.dates) {
     if (worked.has(isoDate)) continue;
     const day = state.dayOf(isoDate);
     if (day.closed) continue;
+    if (!mayWorkOn(employee, isoDate)) continue; // fester freier Wochentag
     if (maxShiftHoursForWindow(windowLength(day)) === 0) continue;
     if (consecutiveRunLengthWith(worked, isoDate) > 6) continue;
+    if (employee.maxDaysPerWeek) {
+      const wk = weekStartOf(isoDate);
+      if ((wochenTage.get(wk) ?? 0) >= employee.maxDaysPerWeek) continue;
+      wochenTage.set(wk, (wochenTage.get(wk) ?? 0) + 1);
+    }
     daysLeft += 1;
   }
   // daysLeft ist eine Obergrenze: greedy belegt nie wirklich JEDEN erlaubten
@@ -309,6 +338,8 @@ function placeOneShift(state: SchedulerState, employee: Employee): boolean {
     if (worked.has(isoDate)) continue; // max. ein Dienst pro Tag
     const day = state.dayOf(isoDate);
     if (day.closed) continue; // Betriebsruhe -> kein Dienst
+    if (!mayWorkOn(employee, isoDate)) continue; // fester freier Wochentag
+    if (!weekDayRoomLeft(state, employee, isoDate)) continue; // Wochentage aufgebraucht
 
     // Längste Schicht, die ins Fenster passt UND den Rest exakt aufteilbar lässt.
     const maxHours = maxShiftHoursForWindow(windowLength(day));
@@ -407,6 +438,8 @@ function repairDemand(state: SchedulerState, employeesById: Map<string, Employee
         if (to === from || worked.has(to)) continue;
         const day = state.dayOf(to);
         if (day.closed || windowLength(day) < presence) continue; // geschlossen / passt nicht
+        if (!mayWorkOn(employee, to)) continue; // fester freier Wochentag
+        if (!weekDayRoomLeft(state, employee, to, from)) continue; // Wochentage aufgebraucht
         // 6-Tage-Regel prüfen, als ob "from" bereits entfernt wäre.
         const trial = new Set(worked);
         trial.delete(from);

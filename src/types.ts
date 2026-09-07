@@ -3,6 +3,7 @@
 // niemals mit Fließkomma-Stunden.
 // ============================================================================
 
+import type { WeekdayKey } from "./lib/demand";
 import type { DateOverride, WorkHoursConfig } from "./lib/workHours";
 
 export type EmploymentType = "VOLLZEIT" | "TEILZEIT";
@@ -15,6 +16,10 @@ export type Employee = {
   employmentType: EmploymentType;
   /** Monatliches Soll in Minuten (Integer). 176 h => 10560. */
   targetMinutes: number;
+  /** Wochentage, an denen die Person geplant werden darf. Leer = alle Tage. */
+  availableWeekdays?: WeekdayKey[];
+  /** Höchstzahl der Arbeitstage je Woche. Fehlt = nur die Sechs-Tage-Regel. */
+  maxDaysPerWeek?: number;
 };
 
 export type Shift = {
