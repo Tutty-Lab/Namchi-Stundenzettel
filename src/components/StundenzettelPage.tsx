@@ -23,17 +23,23 @@ function monthLabelDe(year: number, month: number): string {
 export function StundenzettelPage({
   schedule,
   employee,
+  dates,
+  periodLabel,
 }: {
   schedule: Schedule;
   employee: Employee;
+  /** Nur diese Tage zeigen (Wochen-Stundenzettel); fehlend => ganzer Monat. */
+  dates?: string[];
+  /** Zeitraum-Text oben rechts; fehlend => Monat/Jahr. */
+  periodLabel?: string;
 }) {
-  const dates = datesOfMonth(schedule.year, schedule.month);
+  const rows = dates ?? datesOfMonth(schedule.year, schedule.month);
   const byDate = new Map<string, Shift>();
   for (const s of schedule.shifts) {
     if (s.employeeId === employee.id) byDate.set(s.date, s);
   }
 
-  const totalMinutes = [...byDate.values()].reduce((a, s) => a + s.paidMinutes, 0);
+  const totalMinutes = rows.reduce((a, d) => a + (byDate.get(d)?.paidMinutes ?? 0), 0);
   const diff = totalMinutes - employee.targetMinutes;
   const holidayNames = brandenburgHolidayNames(schedule.year);
   const closedByDate = new Map(
@@ -49,7 +55,7 @@ export function StundenzettelPage({
           {schedule.address && <p className="text-slate-500 text-[11px]">{schedule.address}</p>}
         </div>
         <div className="text-right text-slate-600">
-          <div>{monthLabelDe(schedule.year, schedule.month)}</div>
+          <div>{periodLabel ?? monthLabelDe(schedule.year, schedule.month)}</div>
         </div>
       </div>
 
@@ -58,7 +64,10 @@ export function StundenzettelPage({
         <Info label="Beschäftigungsart" value={employee.employmentType === "VOLLZEIT" ? "Vollzeit" : "Teilzeit"} />
         <Info label="Mitarbeiter" value={employee.name} />
         <Info label="Monat" value={MONTH_NAMES_DE[schedule.month - 1]} />
-        <Info label="Sollstunden" value={`${minutesToDecimalHours(employee.targetMinutes)} h`} />
+        <Info
+          label="Sollstunden"
+          value={dates ? "—" : `${minutesToDecimalHours(employee.targetMinutes)} h`}
+        />
         <Info label="Jahr" value={String(schedule.year)} />
       </div>
 
@@ -75,7 +84,7 @@ export function StundenzettelPage({
           </tr>
         </thead>
         <tbody>
-          {dates.map((d) => {
+          {rows.map((d) => {
             const s = byDate.get(d);
             const wd = WEEKDAY_LABELS_DE[weekdayKeyOf(parseIsoDate(d))];
             const holiday = holidayNames.get(d);
@@ -122,13 +131,21 @@ export function StundenzettelPage({
         </div>
         <div>
           <div className="text-slate-500">Sollstunden</div>
-          <div className="font-semibold">{minutesToDecimalHours(employee.targetMinutes)} h</div>
+          {dates ? (
+            <div className="font-semibold text-slate-400">—</div>
+          ) : (
+            <div className="font-semibold">{minutesToDecimalHours(employee.targetMinutes)} h</div>
+          )}
         </div>
         <div>
           <div className="text-slate-500">Differenz</div>
-          <div className={`font-semibold ${diff === 0 ? "text-emerald-700" : "text-rose-700"}`}>
-            {signedHours(diff)} h
-          </div>
+          {dates ? (
+            <div className="font-semibold text-slate-400">—</div>
+          ) : (
+            <div className={`font-semibold ${diff === 0 ? "text-emerald-700" : "text-rose-700"}`}>
+              {signedHours(diff)} h
+            </div>
+          )}
         </div>
       </div>
 
