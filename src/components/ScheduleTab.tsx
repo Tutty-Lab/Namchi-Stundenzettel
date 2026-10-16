@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { UseScheduleReturn } from "../hooks/useSchedule";
 import type { Shift } from "../types";
 import {
@@ -9,7 +9,6 @@ import {
 } from "../lib/demand";
 import { minutesToShortHours, minutesToTime } from "../lib/time";
 import { signedHours } from "../lib/dateFormat";
-import { monthLabel } from "../lib/shiftOps";
 import { ShiftCellEditor } from "./ShiftCellEditor";
 import { ScheduleDayView } from "./ScheduleDayView";
 
@@ -24,7 +23,16 @@ function cellClass(shift: Shift | undefined): string {
   return `${base} ${!shift.generated ? "shift-custom" : ""}`;
 }
 
-export function ScheduleTab({ store }: { store: UseScheduleReturn }) {
+export function ScheduleTab({
+  store,
+  startSignal = 0,
+  onStarted,
+}: {
+  store: UseScheduleReturn;
+  /** > 0: „Tạo lịch" wurde in der Tab-Zeile gedrückt – Ablauf starten, dann onStarted. */
+  startSignal?: number;
+  onStarted?: () => void;
+}) {
   const { schedule, validation, generate, genError } = store;
   const [selected, setSelected] = useState<{ employeeId: string; date: string } | null>(null);
   // Mặc định: điện thoại -> xem theo ngày, màn lớn -> bảng tháng.
@@ -74,19 +82,19 @@ export function ScheduleTab({ store }: { store: UseScheduleReturn }) {
 
   const hasEmployees = schedule.employees.length > 0;
 
+  /** „Tạo lịch" – derselbe Ablauf wie früher der Knopf hier im Tab. */
+  const startGenerate = () => {
+    generate();
+  };
+  // Der grüne Knopf „Tạo lịch" in der Tab-Zeile (App.tsx) startet ihn.
+  useEffect(() => {
+    if (startSignal === 0) return;
+    if (hasEmployees) startGenerate();
+    onStarted?.();
+  }, [startSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <section>
-      {/* Thanh thao tác */}
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <button
-          onClick={generate}
-          disabled={!hasEmployees}
-          className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 active:bg-slate-800 disabled:opacity-40"
-        >
-          Tạo lịch làm việc
-        </button>
-        <span className="ml-auto text-sm text-slate-500">{monthLabel(schedule.year, schedule.month)}</span>
-      </div>
 
       {/* Chuyển chế độ xem */}
       {hasEmployees && (
