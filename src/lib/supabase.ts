@@ -1,16 +1,13 @@
 // ============================================================================
-// Verbindung zur gemeinsamen Supabase-Datenbank. Alle Filialen hängen an
-// derselben Datenbank; getrennt wird über store_id = id der Filiale
-// (stores.ts: "shin", "coco").
+// Verbindung zur gemeinsamen Supabase-Datenbank. Alle Filialen (je ein Repo,
+// je eine Domain) hängen an derselben Datenbank; getrennt wird nur über
+// STORE_ID – deshalb steht die ID hier fest im Code der jeweiligen Filiale.
 // ============================================================================
 
 import { createClient } from "@supabase/supabase-js";
 
-/**
- * Präfix vor der Filial-ID, z. B. "test-" => Zeilen "test-kenzo" und
- * "test-asiawok". Nur zum lokalen Arbeiten gegen Testzeilen – in Produktion leer.
- */
-export const STORE_ID_PREFIX: string = import.meta.env.VITE_STORE_ID_PREFIX || "";
+/** Kennung dieser Filiale = Schlüssel der Zeile in store_data. */
+export const STORE_ID = "namchi";
 
 // Beide Schreibweisen akzeptieren: VITE_* (selbst gesetzt) und NEXT_PUBLIC_*
 // (so legt die Vercel-Supabase-Integration die öffentlichen Schlüssel an).

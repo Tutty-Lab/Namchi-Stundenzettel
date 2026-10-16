@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { easterSunday, publicHolidays, publicHolidayNames } from "../holidays";
+import { easterSunday, brandenburgHolidays, brandenburgHolidayNames } from "../holidays";
 import { generateSchedule } from "../scheduler";
 import { validateSchedule } from "../validation";
 import { DEFAULT_WORK_HOURS } from "../workHours";
@@ -13,7 +13,7 @@ describe("Feiertage (Brandenburg)", () => {
   });
 
   it("enthält die festen und beweglichen Brandenburg-Feiertage 2026", () => {
-    const h = publicHolidays(2026);
+    const h = brandenburgHolidays(2026);
     expect(h.has("2026-01-01")).toBe(true); // Neujahr
     expect(h.has("2026-04-03")).toBe(true); // Karfreitag
     expect(h.has("2026-04-05")).toBe(true); // Ostersonntag (Brandenburg)
@@ -30,14 +30,14 @@ describe("Feiertage (Brandenburg)", () => {
   });
 
   it("enthält KEINE reinen NRW-Feiertage", () => {
-    const h = publicHolidays(2026);
+    const h = brandenburgHolidays(2026);
     expect(h.has("2026-06-04")).toBe(false); // Fronleichnam – nicht in Brandenburg
     expect(h.has("2026-11-01")).toBe(false); // Allerheiligen – nicht in Brandenburg
   });
 
   it("Set und Namen bleiben deckungsgleich", () => {
     for (const year of [2024, 2026, 2027]) {
-      expect(publicHolidays(year).size).toBe(publicHolidayNames(year).size);
+      expect(brandenburgHolidays(year).size).toBe(brandenburgHolidayNames(year).size);
     }
   });
 });
