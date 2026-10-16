@@ -10,8 +10,11 @@ import {
 } from "../lib/demand";
 import { minutesToShortHours, minutesToTime } from "../lib/time";
 import { isoLabel } from "../lib/shiftOps";
-import { brandenburgHolidayNames } from "../lib/holidays";
+import { publicHolidayNames, publicHolidays } from "../lib/holidays";
+import { isDayClosed } from "../lib/workHours";
 import { format } from "date-fns";
+import { employmentLabelVi } from "../lib/employment";
+import { PauseLabel } from "./PauseLabel";
 
 /** Chế độ xem theo từng ngày – tối ưu cho điện thoại (không cuộn ngang). */
 export function ScheduleDayView({
@@ -26,11 +29,18 @@ export function ScheduleDayView({
     () => datesOfMonth(schedule.year, schedule.month),
     [schedule.year, schedule.month],
   );
-  const holidayNames = useMemo(() => brandenburgHolidayNames(schedule.year), [schedule.year]);
+  const holidayNames = useMemo(() => publicHolidayNames(schedule.year), [schedule.year]);
   const overridesByDate = useMemo(
     () => new Map(schedule.dateOverrides.map((o) => [o.date, o] as const)),
     [schedule.dateOverrides],
   );
+  const closedByDate = useMemo(() => {
+    const holidays = publicHolidays(schedule.year);
+    const ovMap = Object.fromEntries(schedule.dateOverrides.map((o) => [o.date, o]));
+    const set = new Set<string>();
+    for (const d of dates) if (isDayClosed(schedule.workHours, d, holidays, ovMap)) set.add(d);
+    return set;
+  }, [dates, schedule.workHours, schedule.year, schedule.dateOverrides]);
 
   const today = format(new Date(), "yyyy-MM-dd");
   const [selected, setSelected] = useState<string>(() =>
@@ -79,7 +89,7 @@ export function ScheduleDayView({
     const o = overridesByDate.get(iso);
     const isSel = iso === selected;
     if (isSel) return "bg-slate-900 text-white border-slate-900";
-    if (o?.closed) return "bg-rose-50 text-rose-700 border-rose-200";
+    if (closedByDate.has(iso)) return "bg-rose-50 text-rose-700 border-rose-200";
     if (o) return "bg-sky-50 text-sky-700 border-sky-200";
     const k = weekdayKeyOf(parseIsoDate(iso));
     if (k === "saturday" || k === "sunday") return "bg-slate-100 text-slate-700 border-slate-200";
@@ -112,7 +122,7 @@ export function ScheduleDayView({
         <h3 className="text-base font-semibold text-slate-900">
           {WEEKDAY_LABELS_VI[weekdayKey]}, {isoLabel(selected)}
         </h3>
-        {ov?.closed && (
+        {closedByDate.has(selected) && (
           <span className="rounded-full bg-rose-100 text-rose-700 text-xs px-2 py-0.5 font-medium">
             Đóng cửa
           </span>
@@ -147,46 +157,36 @@ export function ScheduleDayView({
           </div>
         ) : (
           working.map((emp) => {
-            // Alle Dienste der Person an diesem Tag – mittags UND abends.
             const own = shiftsByEmp.get(emp.id) as Shift[];
-            const s = own[0];
-            const isEarly = s.shiftType === "EARLY";
+            const first = own[0];
+            const paid = own.reduce((sum, shift) => sum + shift.paidMinutes, 0);
             return (
               <button
                 key={emp.id}
                 onClick={() => onEdit(emp.id, selected)}
                 className={`w-full flex items-center gap-3 rounded-lg border p-3 text-left ${
-                  isEarly ? "shift-early" : "shift-late"
-                } ${!s.generated ? "shift-custom" : ""}`}
+                  first.shiftType === "EARLY" ? "shift-early" : "shift-late"
+                } ${own.some((shift) => !shift.generated) ? "shift-custom" : ""}`}
               >
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">
-                    {emp.name}
-                    {own.length > 1 && (
-                      <span className="ml-1.5 rounded bg-slate-900/10 px-1 text-[10px] font-semibold">
-                        Ca gãy · {minutesToShortHours(own.reduce((sum, x) => sum + x.paidMinutes, 0))}
-                      </span>
-                    )}
-                  </div>
+                  <div className="font-medium truncate">{emp.name}</div>
                   <div className="text-xs opacity-80">
-                    {emp.employmentType === "VOLLZEIT" ? "Toàn thời gian" : "Bán thời gian"} ·{" "}
-                    {isEarly ? "Ca sáng" : "Ca tối"}
+                    {employmentLabelVi(emp.employmentType)} ·{" "}
+                    {own.length > 1
+                      ? `Ca gãy · ${minutesToShortHours(paid)}`
+                      : first.shiftType === "EARLY"
+                        ? "Ca sáng"
+                        : "Ca tối"}
                   </div>
                 </div>
-                <div className="text-right shrink-0">
-                  <div className="font-semibold">
-                    {minutesToTime(s.startMinutes)}–{minutesToTime(s.endMinutes)}
-                  </div>
-                  <div className="text-xs opacity-80">
-                    {minutesToShortHours(s.paidMinutes)} · Nghỉ {s.pauseMinutes}
-                  </div>
-                  {own.slice(1).map((x) => (
-                    <div key={x.id} className="mt-1 border-t border-slate-300/70 pt-1">
+                <div className="text-right shrink-0 space-y-0.5">
+                  {own.map((shift) => (
+                    <div key={shift.id}>
                       <div className="font-semibold">
-                        {minutesToTime(x.startMinutes)}–{minutesToTime(x.endMinutes)}
+                        {minutesToTime(shift.startMinutes)}–{minutesToTime(shift.endMinutes)}
                       </div>
                       <div className="text-xs opacity-80">
-                        {minutesToShortHours(x.paidMinutes)} · Nghỉ {x.pauseMinutes}
+                        {minutesToShortHours(shift.paidMinutes)} · <PauseLabel shift={shift} />
                       </div>
                     </div>
                   ))}

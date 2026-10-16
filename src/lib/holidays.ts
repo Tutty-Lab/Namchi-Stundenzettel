@@ -35,7 +35,7 @@ function iso(date: Date): string {
 }
 
 /** Datum -> Name aller gesetzlichen Feiertage in Brandenburg eines Jahres. */
-export function brandenburgHolidayNames(year: number): Map<string, string> {
+export function publicHolidayNames(year: number): Map<string, string> {
   const easter = easterSunday(year);
   const map = new Map<string, string>();
   map.set(iso(new Date(year, 0, 1)), "Neujahr");
@@ -55,9 +55,9 @@ export function brandenburgHolidayNames(year: number): Map<string, string> {
 
 /**
  * Alle gesetzlichen Feiertage Brandenburgs eines Jahres als ISO-Set
- * "yyyy-MM-dd". Leitet sich aus brandenburgHolidayNames ab, damit Set und
+ * "yyyy-MM-dd". Leitet sich aus publicHolidayNames ab, damit Set und
  * Namen niemals auseinanderlaufen können.
  */
-export function brandenburgHolidays(year: number): Set<string> {
-  return new Set(brandenburgHolidayNames(year).keys());
+export function publicHolidays(year: number): Set<string> {
+  return new Set(publicHolidayNames(year).keys());
 }
